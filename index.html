@@ -7,7 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #070808; /* Updated darker background */
+            --bg: #070808; 
             --primary: #E9E8D4;
             --verify-right: #13E19B;
             --verify-wrong: #F94627;
@@ -49,7 +49,7 @@
         }
         .col-left { flex: 3; }
         .col-mid { flex: 4; }
-        .col-right { flex: 2; padding: 12px 8px; } /* Slightly narrower padding to fit 2/9 */
+        .col-right { flex: 2; padding: 12px 8px; }
 
         /* --- LEFT COLUMN --- */
         .header h1 {
@@ -92,7 +92,7 @@
             background: var(--primary); 
             color: var(--bg); 
             font-weight: bold; 
-            line-height: 1; /* Reduced leading */
+            line-height: 1; 
             padding: 0 5px;
         }
         .btn-bold:active { background: transparent; color: var(--primary); }
@@ -131,7 +131,7 @@
         .canvas-tools button.active { background: var(--primary); color: var(--bg); }
         .canvas-tools button:active { opacity: 0.7; }
 
-        /* --- MIDDLE COLUMN --- */
+        /* --- MIDDLE COLUMN (12x12 SQUARE GRID) --- */
         .grid-centering {
             flex: 1;
             display: flex;
@@ -142,26 +142,37 @@
         }
         .grid-aspect-wrapper {
             height: 100%;
-            aspect-ratio: 9 / 16;
+            aspect-ratio: 1 / 1; /* PERSEGI SEMPURNA */
             position: relative;
-            background-color: var(--primary); /* Serves as 1px grid line */
-            border: 1px solid var(--primary); /* Outer border ensures edges are seen */
         }
         .grid-container {
             width: 100%;
             height: 100%;
             display: grid;
-            grid-template-columns: repeat(9, 1fr);
-            grid-template-rows: repeat(16, 1fr);
-            gap: 1px; /* The white grid outline */
+            grid-template-columns: repeat(12, 1fr);
+            grid-template-rows: repeat(12, 1fr);
+            gap: 0; /* Menghapus gap agar tidak ada pixel yang hilang */
+            
+            /* Border luar sisi atas dan kiri untuk container */
+            border-top: 1px solid var(--primary);
+            border-left: 1px solid var(--primary);
+            background-color: var(--bg);
         }
         .grid-square {
             background-color: var(--bg);
             cursor: pointer;
+            position: relative;
+            
+            /* Masing-masing kotak menggambar garis bawah dan kanannya sendiri */
+            border-right: 1px solid var(--primary);
+            border-bottom: 1px solid var(--primary);
         }
         .grid-square.filled {
-            box-shadow: 0 0 0 1px var(--fill-color); /* Overlap to cover 1px gap */
-            position: relative;
+            background-color: var(--fill-color);
+            border-color: var(--fill-color);
+            
+            /* Box-shadow -1px kiri & atas untuk menutup border tetangga, sehingga solid/menyatu */
+            box-shadow: -1px -1px 0 0 var(--fill-color); 
             z-index: 2;
         }
 
@@ -180,8 +191,8 @@
             gap: 6px;
         }
         .btn-toggle {
-            border: none; /* No outline normally */
-            color: #ffffff; /* pure white text */
+            border: none; 
+            color: #ffffff; 
             font-size: 1.1rem;
             height: 38px;
             cursor: pointer;
@@ -196,7 +207,7 @@
             grid-column: span 3;
             background: transparent;
             color: var(--primary);
-            border: 2px solid var(--primary); /* Tools keep outline */
+            border: 2px solid var(--primary); 
             height: 38px;
         }
         .btn-tool.active {
@@ -272,7 +283,7 @@
         .btn-bit {
             height: 38px;
             border: none;
-            color: #ffffff; /* pure white */
+            color: #ffffff; 
             font-size: 1.3rem;
             cursor: pointer;
             border-radius: 4px;
@@ -316,13 +327,11 @@
             <div class="canvas-inner" id="left-canvas-container">
                 <canvas id="left-canvas"></canvas>
             </div>
-            <!-- Tool Row 1: Pen, Eraser, Clear -->
             <div class="canvas-tools">
                 <button id="l-pen" class="active">PEN</button>
                 <button id="l-eraser">ERASER</button>
                 <button id="l-clear">CLEAR</button>
             </div>
-            <!-- Tool Row 2: Undo, Redo -->
             <div class="canvas-tools">
                 <button id="l-undo">UNDO</button>
                 <button id="l-redo">REDO</button>
@@ -333,16 +342,15 @@
     <!-- MIDDLE COLUMN -->
     <div class="col col-mid">
         <div class="grid-centering">
-            <!-- Wrapper applied with Aspect Ratio for Perfect Squares -->
             <div class="grid-aspect-wrapper">
                 <div class="grid-container" id="main-grid">
-                    <!-- 144 Squares -->
+                    <!-- 144 Squares (12x12) -->
                 </div>
                 <canvas id="fence-canvas"></canvas>
             </div>
         </div>
         <div class="grid-toggles" id="grid-toggles">
-            <!-- 12 Toggles (6x2) + Fence + Eraser will be injected here -->
+            <!-- 12 Toggles (6x2) + Fence + Eraser -->
         </div>
     </div>
 
@@ -353,21 +361,10 @@
     </div>
 
     <script>
-        // --- DATA SETUP ---
         // Harmonious floral/vibrant undertale palette, Lightness > 45%
         const PLAYER_COLORS =[
-            '#528e86', // Teal
-            '#cb929a', // Dusty Pink
-            '#c24a1f', // Rust Orange
-            '#d44f58', // Coral Red
-            '#e88e34', // Vibrant Orange
-            '#de6b8e', // Pinkish Magenta
-            '#5bb19c', // Mint Green
-            '#f2b75b', // Warm Yellow
-            '#85b967', // Light Green
-            '#b67cae', // Soft Violet
-            '#42a8c0', // Cerulean
-            '#e06c53'  // Peach/Salmon
+            '#528e86', '#cb929a', '#c24a1f', '#d44f58', '#e88e34', '#de6b8e', 
+            '#5bb19c', '#f2b75b', '#85b967', '#b67cae', '#42a8c0', '#e06c53' 
         ];
         
         class Player {
@@ -383,7 +380,6 @@
 
         const players = PLAYER_COLORS.map((color, i) => new Player(i, color));
 
-        // --- TIMER ENGINE ---
         class Timer {
             constructor(el) {
                 this.el = el;
@@ -426,7 +422,6 @@
         }
         const timer = new Timer(document.getElementById('main-timer'));
 
-        // --- DRAWING BOARD API WITH UNDO/REDO ---
         class DrawingBoard {
             constructor(canvasId, containerId, defaultColor) {
                 this.canvas = document.getElementById(canvasId);
@@ -445,19 +440,17 @@
                 this.bindEvents();
             }
             resize() {
-                // Resize clears canvas normally. If we have history, we could restore it,
-                // but for Smart TVs usually size doesn't change post-load.
                 this.canvas.width = this.container.clientWidth;
                 this.canvas.height = this.container.clientHeight;
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
-                if(this.historyStep === -1) this.saveState(); // Save initial blank state
+                if(this.historyStep === -1) this.saveState(); 
                 else this.restoreState();
             }
             
             saveState() {
                 this.historyStep++;
-                this.history.length = this.historyStep; // Clear redo history
+                this.history.length = this.historyStep; 
                 this.history.push(this.canvas.toDataURL());
             }
             undo() {
@@ -522,7 +515,7 @@
                 if(!this.isDrawing) return;
                 this.isDrawing = false;
                 this.ctx.closePath();
-                this.saveState(); // Save state on mouse up for Undo
+                this.saveState(); 
             }
 
             bindEvents() {
@@ -538,11 +531,8 @@
         }
 
         const leftCanvas = new DrawingBoard('left-canvas', 'left-canvas-container', '#E9E8D4');
-        
-        // Fence canvas doesn't need undo/redo per requirements, using base methods
         const fenceCanvas = new DrawingBoard('fence-canvas', 'main-grid', '#E9E8D4');
 
-        // --- UI CONTROLLER & GAME ENGINE ---
         class GameEngine {
             constructor() {
                 this.activeMiddleTool = null;
@@ -552,7 +542,7 @@
             }
 
             initDOM() {
-                // Build Middle Grid 9x16
+                // 144 squares (12x12)
                 const gridContainer = document.getElementById('main-grid');
                 for(let i=0; i<144; i++) {
                     let sq = document.createElement('div');
@@ -577,7 +567,6 @@
                     gridContainer.appendChild(sq);
                 }
 
-                // Build Middle Toggles (6 cols x 2 rows = 12 players)
                 const togglesContainer = document.getElementById('grid-toggles');
                 players.forEach(p => {
                     let btn = document.createElement('button');
@@ -588,7 +577,6 @@
                     togglesContainer.appendChild(btn);
                 });
 
-                // Row 3 for Tools (span 3 cols each)
                 let btnFence = document.createElement('button');
                 btnFence.className = 'btn-toggle btn-tool';
                 btnFence.textContent = 'FENCE';
@@ -601,7 +589,6 @@
                 btnEraser.onclick = () => this.setMiddleTool('ERASER', btnEraser);
                 togglesContainer.appendChild(btnEraser);
 
-                // Build Right Sidebar (Players UI)
                 const playersGrid = document.getElementById('players-grid');
                 players.forEach(p => {
                     let box = document.createElement('div');
@@ -617,25 +604,21 @@
                     `;
                     playersGrid.appendChild(box);
 
-                    // Name Update
                     box.querySelector('.player-name').addEventListener('input', (e) => {
                         p.name = e.target.value || `P${p.id+1}`;
                         togglesContainer.children[p.id].textContent = p.name;
                         this.renderLeaderboard();
                     });
 
-                    // Bit Click
                     box.querySelector('.btn-bit').addEventListener('pointerdown', () => this.recordTime(p.id));
                 });
             }
 
             bindGlobalControls() {
-                // Left Column Controls
                 document.getElementById('btn-start').onclick = () => timer.start();
                 document.getElementById('btn-stop').onclick = () => timer.stop();
                 document.getElementById('btn-next').onclick = () => this.processNextRound();
 
-                // Left Canvas Tools
                 const lp = document.getElementById('l-pen');
                 const le = document.getElementById('l-eraser');
                 lp.onclick = () => { leftCanvas.setMode('pen'); lp.classList.add('active'); le.classList.remove('active'); };
@@ -685,7 +668,6 @@
                     vDiv.querySelector('.btn-r').classList.add('active-r');
                     vDiv.querySelector('.btn-w').classList.remove('active-w');
                 } else {
-                    // Logic REVERT on WRONG (X): Reset back so they can tap BIT again
                     p.recordedTime = null;
                     p.isVerified = null;
                     
@@ -732,7 +714,7 @@
                 const lb = document.getElementById('leaderboard');
                 lb.innerHTML = '';
                 
-                let sorted = [...players].sort((a,b) => b.score - a.score);
+                let sorted =[...players].sort((a,b) => b.score - a.score);
                 
                 sorted.forEach((p, index) => {
                     let row = document.createElement('div');
@@ -757,7 +739,6 @@
             }
         }
 
-        // Initialize App
         const game = new GameEngine();
 
     </script>
