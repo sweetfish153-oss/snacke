@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SNACKE - Smart TV Game Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #3B465C;
+            --primary: #E9E8D4;
+            --verify-right: #13E19B;
+            --verify-wrong: #F94627;
+        }
+
+        /* Base Setup & Typography */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg);
+            color: var(--primary);
+            font-family: 'Share Tech', sans-serif;
+            overflow: hidden;
+            display: flex;
+            touch-action: none; /* Preach Touch friendly */
+        }
+        button, input {
+            font-family: 'Share Tech', sans-serif;
+            outline: none;
+        }
+
+        /* Layout Architecture (3 Columns) */
+        .col {
+            flex: 1;
+            height: 100%;
+            border-right: 2px solid var(--primary);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+        }
+        .col:last-child {
+            border-right: none;
+        }
+
+        /* --- LEFT COLUMN: Header, Timer, Left Canvas --- */
+        .header h1 {
+            text-align: center;
+            font-size: 3.5rem;
+            margin: 0 0 10px 0;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+        }
+        .timer-display {
+            font-size: 4.5rem;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+            border: 2px solid var(--primary);
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        .main-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .btn-ctrl {
+            flex: 1;
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+            font-size: 1.5rem;
+            height: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 6px;
+            transition: all 0.1s;
+        }
+        .btn-ctrl:active { background: var(--primary); color: var(--bg); }
+        .btn-bold { background: var(--primary); color: var(--bg); }
+        .btn-bold:active { background: transparent; color: var(--primary); }
+
+        .canvas-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* Important for flex shrink */
+            border: 2px solid var(--primary);
+            position: relative;
+            border-radius: 8px;
+        }
+        .canvas-tools {
+            display: flex;
+            border-top: 2px solid var(--primary);
+        }
+        .canvas-tools button {
+            flex: 1;
+            background: transparent;
+            color: var(--primary);
+            border: none;
+            border-right: 2px solid var(--primary);
+            height: 44px;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        .canvas-tools button:last-child { border-right: none; }
+        .canvas-tools button.active { background: var(--primary); color: var(--bg); }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+        }
+        .canvas-inner { flex: 1; position: relative; }
+
+        /* --- MIDDLE COLUMN: Grid 9x16 & Toggles --- */
+        .grid-container {
+            flex: 1;
+            position: relative;
+            border: 2px solid var(--primary);
+            min-height: 0;
+            background-color: var(--primary); /* Background acts as outline */
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(16, 1fr);
+            gap: 1px; /* The white grid outline */
+        }
+        .grid-square {
+            background-color: var(--bg); /* Default empty */
+            cursor: pointer;
+        }
+        /* When filled, it expands to cover the 1px gap organically */
+        .grid-square.filled {
+            box-shadow: 0 0 0 1px var(--fill-color);
+            position: relative;
+            z-index: 2;
+        }
+
+        #fence-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .grid-toggles {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+            height: 200px;
+        }
+        .btn-toggle {
+            border: 2px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+        }
+        .btn-toggle.active {
+            box-shadow: inset 0 0 0 3px #fff;
+            transform: scale(0.95);
+        }
+        .btn-tool {
+            grid-column: span 2;
+            background: var(--bg);
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            text-shadow: none;
+        }
+        .btn-tool.active {
+            background: var(--primary);
+            color: var(--bg);
+        }
+
+        /* --- RIGHT COLUMN: Leaderboard & Players --- */
+        .leaderboard-wrapper {
+            height: 25%;
+            border-bottom: 2px solid var(--primary);
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            overflow-y: auto;
+        }
+        .leaderboard-wrapper::-webkit-scrollbar { width: 8px; }
+        .leaderboard-wrapper::-webkit-scrollbar-track { background: var(--bg); border-left: 1px solid var(--primary); }
+        .leaderboard-wrapper::-webkit-scrollbar-thumb { background: var(--primary); }
+        
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            font-size: 1.3rem;
+            border-bottom: 1px dashed rgba(233, 232, 212, 0.3);
+        }
+        .lb-controls { display: flex; gap: 5px; }
+        .lb-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            width: 30px; height: 30px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            border-radius: 4px;
+        }
+        .lb-btn:active { background: var(--primary); color: var(--bg); }
+
+        .players-wrapper {
+            height: 75%;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(6, 1fr);
+            gap: 10px;
+        }
+        .player-box {
+            border: 2px solid var(--primary);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            padding: 5px;
+        }
+        .player-name {
+            background: transparent;
+            border: none;
+            border-bottom: 1px dashed var(--primary);
+            color: var(--primary);
+            text-align: center;
+            font-size: 1.2rem;
+            padding: 2px;
+            text-transform: uppercase;
+        }
+        .player-time {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .btn-bit {
+            height: 44px;
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+        }
+        .btn-bit:active { transform: scale(0.95); }
+        
+        .verify-btns {
+            display: flex;
+            height: 44px;
+            gap: 5px;
+        }
+        .verify-btns button {
+            flex: 1;
+            border: 2px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .verify-btns button.active-r { background: var(--verify-right); color: #fff; border-color: var(--verify-right); }
+        .verify-btns button.active-w { background: var(--verify-wrong); color: #fff; border-color: var(--verify-wrong); }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- LEFT COLUMN -->
+    <div class="col">
+        <div class="header">
+            <h1>SNACKE</h1>
+        </div>
+        <div class="timer-display" id="main-timer">00:00.000</div>
+        <div class="main-controls">
+            <button class="btn-ctrl" id="btn-start">START</button>
+            <button class="btn-ctrl" id="btn-stop">STOP</button>
+            <button class="btn-ctrl btn-bold" id="btn-next">NEXT ROUND</button>
+        </div>
+        <div class="canvas-wrapper">
+            <div class="canvas-inner" id="left-canvas-container">
+                <canvas id="left-canvas"></canvas>
+            </div>
+            <div class="canvas-tools">
+                <button id="l-pen" class="active">PEN</button>
+                <button id="l-eraser">ERASER</button>
+                <button id="l-clear">CLEAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MIDDLE COLUMN -->
+    <div class="col">
+        <div class="grid-container" id="main-grid">
+            <!-- 144 Squares will be injected here -->
+            <canvas id="fence-canvas"></canvas>
+        </div>
+        <div class="grid-toggles" id="grid-toggles">
+            <!-- 12 Toggles + Fence + Eraser will be injected here -->
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col">
+        <div class="leaderboard-wrapper" id="leaderboard">
+            <!-- Leaderboard Items -->
+        </div>
+        <div class="players-wrapper" id="players-grid">
+            <!-- 12 Player Boxes -->
+        </div>
+    </div>
+
+    <script>
+        // --- DATA SETUP ---
+        const PLAYER_COLORS =['#F94627', '#9A008A','#022EAC','#13E19B', '#FBA30C','#FDFF50', '#FF6090', '#3333FF', '#CDFFCC', '#FF5035', '#D3E8E1', '#BFB5D7'];
+        
+        class Player {
+            constructor(id, color) {
+                this.id = id;
+                this.color = color;
+                this.name = `P${id+1}`;
+                this.score = 0;
+                this.recordedTime = null;
+                this.isVerified = null; // null, true (Right), false (Wrong)
+            }
+        }
+
+        const players = PLAYER_COLORS.map((color, i) => new Player(i, color));
+
+        // --- TIMER ENGINE ---
+        class Timer {
+            constructor(el) {
+                this.el = el;
+                this.startTime = 0;
+                this.elapsed = 0;
+                this.interval = null;
+            }
+            start() {
+                if(this.interval) return;
+                this.startTime = Date.now() - this.elapsed;
+                this.interval = setInterval(() => this.tick(), 10);
+            }
+            stop() {
+                clearInterval(this.interval);
+                this.interval = null;
+            }
+            reset() {
+                this.stop();
+                this.elapsed = 0;
+                this.updateDisplay();
+            }
+            tick() {
+                this.elapsed = Date.now() - this.startTime;
+                this.updateDisplay();
+            }
+            updateDisplay() {
+                let d = new Date(this.elapsed);
+                let m = String(d.getUTCMinutes()).padStart(2, '0');
+                let s = String(d.getUTCSeconds()).padStart(2, '0');
+                let ms = String(d.getUTCMilliseconds()).padStart(3, '0');
+                this.el.textContent = `${m}:${s}.${ms}`;
+            }
+            formatExternal(ms) {
+                let d = new Date(ms);
+                let m = String(d.getUTCMinutes()).padStart(2, '0');
+                let s = String(d.getUTCSeconds()).padStart(2, '0');
+                let milli = String(d.getUTCMilliseconds()).padStart(3, '0');
+                return `${m}:${s}.${milli}`;
+            }
+        }
+        const timer = new Timer(document.getElementById('main-timer'));
+
+        // --- DRAWING BOARD API ---
+        class DrawingBoard {
+            constructor(canvasId, containerId, defaultColor) {
+                this.canvas = document.getElementById(canvasId);
+                this.container = containerId ? document.getElementById(containerId) : this.canvas.parentElement;
+                this.ctx = this.canvas.getContext('2d');
+                this.isDrawing = false;
+                this.mode = 'pen';
+                this.color = defaultColor;
+
+                // Resize observer to ensure 100% precision
+                const ro = new ResizeObserver(() => this.resize());
+                ro.observe(this.container);
+                
+                this.bindEvents();
+            }
+            resize() {
+                // Keep drawing state during resize if possible, else just clear
+                this.canvas.width = this.container.clientWidth;
+                this.canvas.height = this.container.clientHeight;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+            }
+            setMode(mode) { this.mode = mode; }
+            clear() { this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); }
+            
+            getPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return {
+                    x: clientX - rect.left,
+                    y: clientY - rect.top
+                };
+            }
+
+            startDraw(e) {
+                this.isDrawing = true;
+                const pos = this.getPos(e);
+                this.ctx.beginPath();
+                this.ctx.moveTo(pos.x, pos.y);
+            }
+
+            draw(e) {
+                if (!this.isDrawing) return;
+                e.preventDefault(); // Prevent scrolling on TV/Touch
+                const pos = this.getPos(e);
+                
+                if (this.mode === 'eraser') {
+                    this.ctx.globalCompositeOperation = 'destination-out';
+                    this.ctx.lineWidth = 30;
+                } else {
+                    this.ctx.globalCompositeOperation = 'source-over';
+                    this.ctx.strokeStyle = this.color;
+                    this.ctx.lineWidth = 4;
+                }
+
+                this.ctx.lineTo(pos.x, pos.y);
+                this.ctx.stroke();
+            }
+
+            stopDraw() {
+                if(!this.isDrawing) return;
+                this.isDrawing = false;
+                this.ctx.closePath();
+            }
+
+            bindEvents() {
+                this.canvas.addEventListener('pointerdown', (e) => this.startDraw(e));
+                this.canvas.addEventListener('pointermove', (e) => this.draw(e));
+                this.canvas.addEventListener('pointerup', () => this.stopDraw());
+                this.canvas.addEventListener('pointerout', () => this.stopDraw());
+                
+                // Touch specific
+                this.canvas.addEventListener('touchstart', (e) => this.startDraw(e), {passive: false});
+                this.canvas.addEventListener('touchmove', (e) => this.draw(e), {passive: false});
+                this.canvas.addEventListener('touchend', () => this.stopDraw());
+            }
+        }
+
+        const leftCanvas = new DrawingBoard('left-canvas', 'left-canvas-container', '#E9E8D4');
+        const fenceCanvas = new DrawingBoard('fence-canvas', 'main-grid', '#E9E8D4');
+
+        // --- UI CONTROLLER & GAME ENGINE ---
+        class GameEngine {
+            constructor() {
+                this.activeMiddleTool = null; // 0-11 for players, 'FENCE', 'ERASER'
+                this.initDOM();
+                this.bindGlobalControls();
+                this.renderLeaderboard();
+            }
+
+            initDOM() {
+                // Build Middle Grid 9x16 (144 squares)
+                const gridContainer = document.getElementById('main-grid');
+                for(let i=0; i<144; i++) {
+                    let sq = document.createElement('div');
+                    sq.className = 'grid-square';
+                    sq.dataset.colorId = -1;
+                    
+                    sq.addEventListener('pointerdown', (e) => {
+                        if(typeof this.activeMiddleTool === 'number') {
+                            const pColor = players[this.activeMiddleTool].color;
+                            if(sq.dataset.colorId == this.activeMiddleTool) {
+                                // Double click clears
+                                sq.style.backgroundColor = '';
+                                sq.classList.remove('filled');
+                                sq.dataset.colorId = -1;
+                            } else {
+                                // Apply overlap color, trigger border cover mechanism
+                                sq.style.backgroundColor = pColor;
+                                sq.style.setProperty('--fill-color', pColor);
+                                sq.classList.add('filled');
+                                sq.dataset.colorId = this.activeMiddleTool;
+                            }
+                        }
+                    });
+                    gridContainer.appendChild(sq);
+                }
+
+                // Build Middle Grid Toggles (12 Players + 2 Tools)
+                const togglesContainer = document.getElementById('grid-toggles');
+                players.forEach(p => {
+                    let btn = document.createElement('button');
+                    btn.className = 'btn-toggle';
+                    btn.style.backgroundColor = p.color;
+                    btn.textContent = p.name;
+                    btn.onclick = () => this.setMiddleTool(p.id, btn);
+                    togglesContainer.appendChild(btn);
+                });
+
+                let btnFence = document.createElement('button');
+                btnFence.className = 'btn-toggle btn-tool';
+                btnFence.textContent = 'FENCE';
+                btnFence.onclick = () => this.setMiddleTool('FENCE', btnFence);
+                togglesContainer.appendChild(btnFence);
+
+                let btnEraser = document.createElement('button');
+                btnEraser.className = 'btn-toggle btn-tool';
+                btnEraser.textContent = 'ERASER';
+                btnEraser.onclick = () => this.setMiddleTool('ERASER', btnEraser);
+                togglesContainer.appendChild(btnEraser);
+
+                // Build Right Sidebar (Players UI)
+                const playersGrid = document.getElementById('players-grid');
+                players.forEach(p => {
+                    let box = document.createElement('div');
+                    box.className = 'player-box';
+                    box.innerHTML = `
+                        <input type="text" class="player-name" value="${p.name}" maxlength="5" data-id="${p.id}">
+                        <div class="player-time" id="time-p${p.id}">--:--.---</div>
+                        <button class="btn-bit" id="bit-p${p.id}" style="background-color: ${p.color}">BIT</button>
+                        <div class="verify-btns hidden" id="verify-p${p.id}">
+                            <button class="btn-r" onclick="game.verify(${p.id}, true)">✓</button>
+                            <button class="btn-w" onclick="game.verify(${p.id}, false)">✕</button>
+                        </div>
+                    `;
+                    playersGrid.appendChild(box);
+
+                    // Name Update
+                    box.querySelector('.player-name').addEventListener('input', (e) => {
+                        p.name = e.target.value || `P${p.id+1}`;
+                        // Sync with toggle button
+                        togglesContainer.children[p.id].textContent = p.name;
+                        this.renderLeaderboard();
+                    });
+
+                    // Bit Click
+                    box.querySelector('.btn-bit').addEventListener('pointerdown', () => this.recordTime(p.id));
+                });
+            }
+
+            bindGlobalControls() {
+                // Left Column Controls
+                document.getElementById('btn-start').onclick = () => timer.start();
+                document.getElementById('btn-stop').onclick = () => timer.stop();
+                document.getElementById('btn-next').onclick = () => this.processNextRound();
+
+                // Left Canvas Tools
+                const lp = document.getElementById('l-pen');
+                const le = document.getElementById('l-eraser');
+                lp.onclick = () => { leftCanvas.setMode('pen'); lp.classList.add('active'); le.classList.remove('active'); };
+                le.onclick = () => { leftCanvas.setMode('eraser'); le.classList.add('active'); lp.classList.remove('active'); };
+                document.getElementById('l-clear').onclick = () => leftCanvas.clear();
+            }
+
+            setMiddleTool(toolId, btnEl) {
+                this.activeMiddleTool = toolId;
+                
+                // Visual reset
+                document.querySelectorAll('#grid-toggles .btn-toggle').forEach(b => b.classList.remove('active'));
+                btnEl.classList.add('active');
+
+                // Canvas Overlay pointer-events logic
+                const fCanvas = document.getElementById('fence-canvas');
+                if(toolId === 'FENCE') {
+                    fCanvas.style.pointerEvents = 'auto';
+                    fenceCanvas.setMode('pen');
+                } else if(toolId === 'ERASER') {
+                    fCanvas.style.pointerEvents = 'auto';
+                    fenceCanvas.setMode('eraser');
+                } else {
+                    fCanvas.style.pointerEvents = 'none'; // Let clicks pass to CSS grid
+                }
+            }
+
+            recordTime(playerId) {
+                if(!timer.interval && timer.elapsed === 0) return; // Prevent clicking before start
+                const p = players[playerId];
+                if(p.recordedTime !== null) return; // Already pressed
+
+                p.recordedTime = timer.elapsed;
+                document.getElementById(`time-p${playerId}`).textContent = timer.formatExternal(p.recordedTime);
+                
+                // Swap Buttons
+                document.getElementById(`bit-p${playerId}`).classList.add('hidden');
+                document.getElementById(`verify-p${playerId}`).classList.remove('hidden');
+            }
+
+            verify(playerId, isRight) {
+                const p = players[playerId];
+                p.isVerified = isRight;
+
+                // Visual Feedback on ✓ and ✕
+                const vDiv = document.getElementById(`verify-p${playerId}`);
+                const btnR = vDiv.querySelector('.btn-r');
+                const btnW = vDiv.querySelector('.btn-w');
+                
+                if(isRight) {
+                    btnR.classList.add('active-r');
+                    btnW.classList.remove('active-w');
+                } else {
+                    btnW.classList.add('active-w');
+                    btnR.classList.remove('active-r');
+                }
+            }
+
+            changeScore(playerId, delta) {
+                players[playerId].score += delta;
+                this.renderLeaderboard();
+            }
+
+            processNextRound() {
+                // Filter correct players and sort by time
+                let validPlayers = players.filter(p => p.isVerified === true && p.recordedTime !== null);
+                validPlayers.sort((a, b) => a.recordedTime - b.recordedTime);
+
+                // Auto Score
+                if(validPlayers.length > 0) validPlayers[0].score += 3;
+                if(validPlayers.length > 1) validPlayers[1].score += 2;
+                if(validPlayers.length > 2) validPlayers[2].score += 1;
+
+                // Reset Round State for all players
+                players.forEach(p => {
+                    p.recordedTime = null;
+                    p.isVerified = null;
+                    
+                    document.getElementById(`time-p${p.id}`).textContent = '--:--.---';
+                    document.getElementById(`bit-p${p.id}`).classList.remove('hidden');
+                    
+                    const vDiv = document.getElementById(`verify-p${p.id}`);
+                    vDiv.classList.add('hidden');
+                    vDiv.querySelector('.btn-r').classList.remove('active-r');
+                    vDiv.querySelector('.btn-w').classList.remove('active-w');
+                });
+
+                // Reset Timer
+                timer.reset();
+
+                // Note: Middle grid & Canvases are NOT cleared as requested.
+                this.renderLeaderboard();
+            }
+
+            renderLeaderboard() {
+                const lb = document.getElementById('leaderboard');
+                lb.innerHTML = '';
+                
+                let sorted = [...players].sort((a,b) => b.score - a.score);
+                
+                sorted.forEach((p, index) => {
+                    let row = document.createElement('div');
+                    row.className = 'lb-row';
+                    // Apply gold/silver/bronze highlight for top 3
+                    if(index === 0 && p.score > 0) row.style.color = '#FDFF50';
+                    else if(index === 1 && p.score > 0) row.style.color = '#E9E8D4';
+                    else if(index === 2 && p.score > 0) row.style.color = '#FBA30C';
+
+                    row.innerHTML = `
+                        <div style="display:flex; align-items:center; gap: 10px;">
+                            <span style="display:inline-block; width:15px; height:15px; background:${p.color}; border-radius:2px;"></span>
+                            <span>${p.name}</span>
+                        </div>
+                        <div class="lb-controls">
+                            <span style="width: 40px; text-align:right; margin-right: 10px;">${p.score}</span>
+                            <button class="lb-btn" onclick="game.changeScore(${p.id}, 1)">+</button>
+                            <button class="lb-btn" onclick="game.changeScore(${p.id}, -1)">-</button>
+                        </div>
+                    `;
+                    lb.appendChild(row);
+                });
+            }
+        }
+
+        // Initialize App
+        const game = new GameEngine();
+
+    </script>
+</body>
+</html>
