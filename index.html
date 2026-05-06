@@ -387,3 +387,379 @@
         class Timer {
             constructor(el) {
                 this.el = el;
+                this.startTime = 0;
+                this.elapsed = 0;
+                this.interval = null;
+            }
+            start() {
+                if(this.interval) return;
+                this.startTime = Date.now() - this.elapsed;
+                this.interval = setInterval(() => this.tick(), 10);
+            }
+            stop() {
+                clearInterval(this.interval);
+                this.interval = null;
+            }
+            reset() {
+                this.stop();
+                this.elapsed = 0;
+                this.updateDisplay();
+            }
+            tick() {
+                this.elapsed = Date.now() - this.startTime;
+                this.updateDisplay();
+            }
+            updateDisplay() {
+                let d = new Date(this.elapsed);
+                let m = String(d.getUTCMinutes()).padStart(2, '0');
+                let s = String(d.getUTCSeconds()).padStart(2, '0');
+                let ms = String(d.getUTCMilliseconds()).padStart(3, '0');
+                this.el.textContent = `${m}:${s}.${ms}`;
+            }
+            formatExternal(ms) {
+                let d = new Date(ms);
+                let m = String(d.getUTCMinutes()).padStart(2, '0');
+                let s = String(d.getUTCSeconds()).padStart(2, '0');
+                let milli = String(d.getUTCMilliseconds()).padStart(3, '0');
+                return `${m}:${s}.${milli}`;
+            }
+        }
+        const timer = new Timer(document.getElementById('main-timer'));
+
+        // --- DRAWING BOARD API WITH UNDO/REDO ---
+        class DrawingBoard {
+            constructor(canvasId, containerId, defaultColor) {
+                this.canvas = document.getElementById(canvasId);
+                this.container = containerId ? document.getElementById(containerId) : this.canvas.parentElement;
+                this.ctx = this.canvas.getContext('2d');
+                this.isDrawing = false;
+                this.mode = 'pen';
+                this.color = defaultColor;
+                
+                this.history =[];
+                this.historyStep = -1;
+
+                const ro = new ResizeObserver(() => this.resize());
+                ro.observe(this.container);
+                
+                this.bindEvents();
+            }
+            resize() {
+                // Resize clears canvas normally. If we have history, we could restore it,
+                // but for Smart TVs usually size doesn't change post-load.
+                this.canvas.width = this.container.clientWidth;
+                this.canvas.height = this.container.clientHeight;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                if(this.historyStep === -1) this.saveState(); // Save initial blank state
+                else this.restoreState();
+            }
+            
+            saveState() {
+                this.historyStep++;
+                this.history.length = this.historyStep; // Clear redo history
+                this.history.push(this.canvas.toDataURL());
+            }
+            undo() {
+                if (this.historyStep > 0) {
+                    this.historyStep--;
+                    this.restoreState();
+                }
+            }
+            redo() {
+                if (this.historyStep < this.history.length - 1) {
+                    this.historyStep++;
+                    this.restoreState();
+                }
+            }
+            restoreState() {
+                let img = new Image();
+                img.src = this.history[this.historyStep];
+                img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.drawImage(img, 0, 0);
+                };
+            }
+
+            setMode(mode) { this.mode = mode; }
+            clear() { 
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); 
+                this.saveState();
+            }
+            
+            getPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            }
+
+            startDraw(e) {
+                this.isDrawing = true;
+                const pos = this.getPos(e);
+                this.ctx.beginPath();
+                this.ctx.moveTo(pos.x, pos.y);
+            }
+
+            draw(e) {
+                if (!this.isDrawing) return;
+                e.preventDefault();
+                const pos = this.getPos(e);
+                
+                if (this.mode === 'eraser') {
+                    this.ctx.globalCompositeOperation = 'destination-out';
+                    this.ctx.lineWidth = 30;
+                } else {
+                    this.ctx.globalCompositeOperation = 'source-over';
+                    this.ctx.strokeStyle = this.color;
+                    this.ctx.lineWidth = 4;
+                }
+                this.ctx.lineTo(pos.x, pos.y);
+                this.ctx.stroke();
+            }
+
+            stopDraw() {
+                if(!this.isDrawing) return;
+                this.isDrawing = false;
+                this.ctx.closePath();
+                this.saveState(); // Save state on mouse up for Undo
+            }
+
+            bindEvents() {
+                this.canvas.addEventListener('pointerdown', (e) => this.startDraw(e));
+                this.canvas.addEventListener('pointermove', (e) => this.draw(e));
+                this.canvas.addEventListener('pointerup', () => this.stopDraw());
+                this.canvas.addEventListener('pointerout', () => this.stopDraw());
+                
+                this.canvas.addEventListener('touchstart', (e) => this.startDraw(e), {passive: false});
+                this.canvas.addEventListener('touchmove', (e) => this.draw(e), {passive: false});
+                this.canvas.addEventListener('touchend', () => this.stopDraw());
+            }
+        }
+
+        const leftCanvas = new DrawingBoard('left-canvas', 'left-canvas-container', '#E9E8D4');
+        
+        // Fence canvas doesn't need undo/redo per requirements, using base methods
+        const fenceCanvas = new DrawingBoard('fence-canvas', 'main-grid', '#E9E8D4');
+
+        // --- UI CONTROLLER & GAME ENGINE ---
+        class GameEngine {
+            constructor() {
+                this.activeMiddleTool = null;
+                this.initDOM();
+                this.bindGlobalControls();
+                this.renderLeaderboard();
+            }
+
+            initDOM() {
+                // Build Middle Grid 9x16
+                const gridContainer = document.getElementById('main-grid');
+                for(let i=0; i<144; i++) {
+                    let sq = document.createElement('div');
+                    sq.className = 'grid-square';
+                    sq.dataset.colorId = -1;
+                    
+                    sq.addEventListener('pointerdown', (e) => {
+                        if(typeof this.activeMiddleTool === 'number') {
+                            const pColor = players[this.activeMiddleTool].color;
+                            if(sq.dataset.colorId == this.activeMiddleTool) {
+                                sq.style.backgroundColor = '';
+                                sq.classList.remove('filled');
+                                sq.dataset.colorId = -1;
+                            } else {
+                                sq.style.backgroundColor = pColor;
+                                sq.style.setProperty('--fill-color', pColor);
+                                sq.classList.add('filled');
+                                sq.dataset.colorId = this.activeMiddleTool;
+                            }
+                        }
+                    });
+                    gridContainer.appendChild(sq);
+                }
+
+                // Build Middle Toggles (6 cols x 2 rows = 12 players)
+                const togglesContainer = document.getElementById('grid-toggles');
+                players.forEach(p => {
+                    let btn = document.createElement('button');
+                    btn.className = 'btn-toggle';
+                    btn.style.backgroundColor = p.color;
+                    btn.textContent = p.name;
+                    btn.onclick = () => this.setMiddleTool(p.id, btn);
+                    togglesContainer.appendChild(btn);
+                });
+
+                // Row 3 for Tools (span 3 cols each)
+                let btnFence = document.createElement('button');
+                btnFence.className = 'btn-toggle btn-tool';
+                btnFence.textContent = 'FENCE';
+                btnFence.onclick = () => this.setMiddleTool('FENCE', btnFence);
+                togglesContainer.appendChild(btnFence);
+
+                let btnEraser = document.createElement('button');
+                btnEraser.className = 'btn-toggle btn-tool';
+                btnEraser.textContent = 'ERASER';
+                btnEraser.onclick = () => this.setMiddleTool('ERASER', btnEraser);
+                togglesContainer.appendChild(btnEraser);
+
+                // Build Right Sidebar (Players UI)
+                const playersGrid = document.getElementById('players-grid');
+                players.forEach(p => {
+                    let box = document.createElement('div');
+                    box.className = 'player-box';
+                    box.innerHTML = `
+                        <input type="text" class="player-name" value="${p.name}" maxlength="5" data-id="${p.id}">
+                        <div class="player-time" id="time-p${p.id}">--:--.---</div>
+                        <button class="btn-bit" id="bit-p${p.id}" style="background-color: ${p.color}">BIT</button>
+                        <div class="verify-btns hidden" id="verify-p${p.id}">
+                            <button class="btn-r" onclick="game.verify(${p.id}, true)">✓</button>
+                            <button class="btn-w" onclick="game.verify(${p.id}, false)">✕</button>
+                        </div>
+                    `;
+                    playersGrid.appendChild(box);
+
+                    // Name Update
+                    box.querySelector('.player-name').addEventListener('input', (e) => {
+                        p.name = e.target.value || `P${p.id+1}`;
+                        togglesContainer.children[p.id].textContent = p.name;
+                        this.renderLeaderboard();
+                    });
+
+                    // Bit Click
+                    box.querySelector('.btn-bit').addEventListener('pointerdown', () => this.recordTime(p.id));
+                });
+            }
+
+            bindGlobalControls() {
+                // Left Column Controls
+                document.getElementById('btn-start').onclick = () => timer.start();
+                document.getElementById('btn-stop').onclick = () => timer.stop();
+                document.getElementById('btn-next').onclick = () => this.processNextRound();
+
+                // Left Canvas Tools
+                const lp = document.getElementById('l-pen');
+                const le = document.getElementById('l-eraser');
+                lp.onclick = () => { leftCanvas.setMode('pen'); lp.classList.add('active'); le.classList.remove('active'); };
+                le.onclick = () => { leftCanvas.setMode('eraser'); le.classList.add('active'); lp.classList.remove('active'); };
+                document.getElementById('l-clear').onclick = () => leftCanvas.clear();
+                
+                document.getElementById('l-undo').onclick = () => leftCanvas.undo();
+                document.getElementById('l-redo').onclick = () => leftCanvas.redo();
+            }
+
+            setMiddleTool(toolId, btnEl) {
+                this.activeMiddleTool = toolId;
+                
+                document.querySelectorAll('#grid-toggles .btn-toggle').forEach(b => b.classList.remove('active'));
+                btnEl.classList.add('active');
+
+                const fCanvas = document.getElementById('fence-canvas');
+                if(toolId === 'FENCE') {
+                    fCanvas.style.pointerEvents = 'auto';
+                    fenceCanvas.setMode('pen');
+                } else if(toolId === 'ERASER') {
+                    fCanvas.style.pointerEvents = 'auto';
+                    fenceCanvas.setMode('eraser');
+                } else {
+                    fCanvas.style.pointerEvents = 'none'; 
+                }
+            }
+
+            recordTime(playerId) {
+                if(!timer.interval && timer.elapsed === 0) return; 
+                const p = players[playerId];
+                if(p.recordedTime !== null) return; 
+
+                p.recordedTime = timer.elapsed;
+                document.getElementById(`time-p${playerId}`).textContent = timer.formatExternal(p.recordedTime);
+                
+                document.getElementById(`bit-p${playerId}`).classList.add('hidden');
+                document.getElementById(`verify-p${playerId}`).classList.remove('hidden');
+            }
+
+            verify(playerId, isRight) {
+                const p = players[playerId];
+                const vDiv = document.getElementById(`verify-p${playerId}`);
+                
+                if(isRight) {
+                    p.isVerified = true;
+                    vDiv.querySelector('.btn-r').classList.add('active-r');
+                    vDiv.querySelector('.btn-w').classList.remove('active-w');
+                } else {
+                    // Logic REVERT on WRONG (X): Reset back so they can tap BIT again
+                    p.recordedTime = null;
+                    p.isVerified = null;
+                    
+                    document.getElementById(`time-p${playerId}`).textContent = '--:--.---';
+                    document.getElementById(`bit-p${playerId}`).classList.remove('hidden');
+                    
+                    vDiv.classList.add('hidden');
+                    vDiv.querySelector('.btn-r').classList.remove('active-r');
+                    vDiv.querySelector('.btn-w').classList.remove('active-w');
+                }
+            }
+
+            changeScore(playerId, delta) {
+                players[playerId].score += delta;
+                this.renderLeaderboard();
+            }
+
+            processNextRound() {
+                let validPlayers = players.filter(p => p.isVerified === true && p.recordedTime !== null);
+                validPlayers.sort((a, b) => a.recordedTime - b.recordedTime);
+
+                if(validPlayers.length > 0) validPlayers[0].score += 3;
+                if(validPlayers.length > 1) validPlayers[1].score += 2;
+                if(validPlayers.length > 2) validPlayers[2].score += 1;
+
+                players.forEach(p => {
+                    p.recordedTime = null;
+                    p.isVerified = null;
+                    
+                    document.getElementById(`time-p${p.id}`).textContent = '--:--.---';
+                    document.getElementById(`bit-p${p.id}`).classList.remove('hidden');
+                    
+                    const vDiv = document.getElementById(`verify-p${p.id}`);
+                    vDiv.classList.add('hidden');
+                    vDiv.querySelector('.btn-r').classList.remove('active-r');
+                    vDiv.querySelector('.btn-w').classList.remove('active-w');
+                });
+
+                timer.reset();
+                this.renderLeaderboard();
+            }
+
+            renderLeaderboard() {
+                const lb = document.getElementById('leaderboard');
+                lb.innerHTML = '';
+                
+                let sorted = [...players].sort((a,b) => b.score - a.score);
+                
+                sorted.forEach((p, index) => {
+                    let row = document.createElement('div');
+                    row.className = 'lb-row';
+                    if(index === 0 && p.score > 0) row.style.color = '#f2b75b';
+                    else if(index === 1 && p.score > 0) row.style.color = '#E9E8D4';
+                    else if(index === 2 && p.score > 0) row.style.color = '#e88e34';
+
+                    row.innerHTML = `
+                        <div style="display:flex; align-items:center; gap: 8px;">
+                            <span style="display:inline-block; width:12px; height:12px; background:${p.color}; border-radius:2px;"></span>
+                            <span>${p.name}</span>
+                        </div>
+                        <div class="lb-controls">
+                            <span style="width: 30px; text-align:right; margin-right: 5px;">${p.score}</span>
+                            <button class="lb-btn" onclick="game.changeScore(${p.id}, 1)">+</button>
+                            <button class="lb-btn" onclick="game.changeScore(${p.id}, -1)">-</button>
+                        </div>
+                    `;
+                    lb.appendChild(row);
+                });
+            }
+        }
+
+        // Initialize App
+        const game = new GameEngine();
+
+    </script>
+</body>
+</html>
